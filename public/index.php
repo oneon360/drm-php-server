@@ -1,20 +1,22 @@
 <?php
-$keyFile = __DIR__ . 'https://oneon360.github.io/urban/kuy.json';
-$id = isset($_GET['id']) ? trim($_GET['id']) : null;
+// public/index.php
 
-if (!$id || !preg_match('/^[a-zA-Z0-9_-]+$/', $id)) {
+$id = $_GET['id'] ?? null;
+
+if (!$id) {
     http_response_code(400);
-    echo "Invalid or missing ID.";
+    echo "Missing ID";
     exit;
 }
 
-$keyData = json_decode(file_get_contents($keyFile), true);
+$keys = json_decode(file_get_contents(__DIR__ . '/../keys/keylist.json'), true);
 
-if (!isset($keyData[$id])) {
+if (!isset($keys[$id])) {
     http_response_code(404);
-    echo "Key not found for ID: $id";
+    echo "Key not found";
     exit;
 }
 
+// Output the raw license key string
 header('Content-Type: text/plain');
-echo $keyData[$id];
+echo $keys[$id];
