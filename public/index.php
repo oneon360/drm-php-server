@@ -1,6 +1,4 @@
 <?php
-// public/index.php
-
 $id = $_GET['id'] ?? null;
 
 if (!$id) {
@@ -9,7 +7,15 @@ if (!$id) {
     exit;
 }
 
-$keys = json_decode(file_get_contents(__DIR__ . '/../keys/keylist.json'), true);
+$keyFile = '/var/www/keys/keylist.json';
+
+if (!file_exists($keyFile)) {
+    http_response_code(500);
+    echo "Key file not found";
+    exit;
+}
+
+$keys = json_decode(file_get_contents($keyFile), true);
 
 if (!isset($keys[$id])) {
     http_response_code(404);
@@ -17,6 +23,6 @@ if (!isset($keys[$id])) {
     exit;
 }
 
-// Output the raw license key string
+// Output: key_id:key_value
 header('Content-Type: text/plain');
 echo $keys[$id];
