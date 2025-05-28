@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: drm-php
+    env: php             # 👈 WAJIB: untuk PHP
+    buildCommand: ""     # kosong karena PHP tidak butuh build
+    startCommand: ""     # kosong karena pakai default Apache bawaan Render
+    plan: free           # pake plan gratis
