@@ -1,5 +1,5 @@
 <?php
-$keyFile = __DIR__ . '/../keys/keylist.json';
+$keyFile = __DIR__ . 'https://oneon360.github.io/urban/kuy.json';
 $id = isset($_GET['id']) ? trim($_GET['id']) : null;
 
 if (!$id || !preg_match('/^[a-zA-Z0-9_-]+$/', $id)) {
