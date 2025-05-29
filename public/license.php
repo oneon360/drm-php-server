@@ -1,25 +1,31 @@
 <?php
+// Blokir akses langsung yang tidak mengandung secret header
+if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET'] !== 'abc123') {
+    http_response_code(403);
+    exit(json_encode(["error" => "Unauthorized"]));
+}
+
 header('Content-Type: application/json');
 
 /**
  * Convert HEX to Base64 URL-safe (tanpa padding)
- * Cocok untuk DRM license format ala JavaScript
  */
 function hexToBase64UrlSafe($hex) {
     $base64 = base64_encode(hex2bin($hex));
     return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
+// Ambil parameter ID dari URL
 $id = $_GET['id'] ?? null;
 
-if (!$id) {
+if (!$id || !preg_match('/^var\d+$/', $id)) {
     http_response_code(400);
-    echo json_encode(["error" => "Missing ID"]);
+    echo json_encode(["error" => "Invalid or missing ID"]);
     exit;
 }
 
-// File keylist.json ada di luar folder publik (Docker copy ke /var/www/keys)
-$keyFile = '/var/www/keys/keylist.json';
+// Lokasi file keylist.json
+$keyFile = __DIR__ . '/keylist.json'; // atau ganti ke '/var/www/keys/keylist.json' jika di Docker
 
 if (!file_exists($keyFile)) {
     http_response_code(500);
@@ -44,9 +50,9 @@ if (count($raw) !== 2) {
 }
 
 $key_id_hex = $raw[0];
-$key_hex = $raw[1];
+$key_hex    = $raw[1];
 
-// Convert HEX to base64url
+// Convert HEX ke base64url
 $kid_b64 = hexToBase64UrlSafe($key_id_hex);
 $k_b64   = hexToBase64UrlSafe($key_hex);
 
@@ -61,3 +67,5 @@ echo json_encode([
     ],
     "type" => "temporary"
 ]);
+exit;
+?>
