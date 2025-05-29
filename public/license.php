@@ -1,40 +1,13 @@
 <?php
 header('Content-Type: application/json');
 
-// Daftar User-Agent mencurigakan yang ingin diblokir
-$blockAgents = [
-    'python', 'requests', 'urllib', 'httpclient',
-    'curl', 'wget', 'scrapy', 'postman',
-    'httpie', 'okhttp', 'insomnia', 'axios', 'java',
-    'powershell', 'php', 'bot', 'crawler', 'spider',
-];
-
-// Ambil User-Agent
-$ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
-
-// Cek apakah termasuk agen terblokir
-function isBlockedAgent($ua, $blockAgents) {
-    foreach ($blockAgents as $bad) {
-        if (strpos($ua, $bad) !== false) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Tolak jika terdeteksi agen tidak sah
-if (isBlockedAgent($ua, $blockAgents)) {
-    http_response_code(403);
-    if (function_exists('fastcgi_finish_request')) {
-        fastcgi_finish_request();
-    }
-    exit;
-}
-
-// --- lanjutkan proses DRM seperti biasa ---
-
-function hexToBase64($hex) {
-    return base64_encode(hex2bin($hex));
+/**
+ * Convert HEX to Base64 URL-safe (tanpa padding)
+ * Cocok untuk DRM license format ala JavaScript
+ */
+function hexToBase64UrlSafe($hex) {
+    $base64 = base64_encode(hex2bin($hex));
+    return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
 $id = $_GET['id'] ?? null;
@@ -45,7 +18,8 @@ if (!$id) {
     exit;
 }
 
-$keyFile = __DIR__ . '/var/www/keys/keylist.json';
+// File keylist.json ada di luar folder publik (Docker copy ke /var/www/keys)
+$keyFile = '/var/www/keys/keylist.json';
 
 if (!file_exists($keyFile)) {
     http_response_code(500);
@@ -72,9 +46,11 @@ if (count($raw) !== 2) {
 $key_id_hex = $raw[0];
 $key_hex = $raw[1];
 
-$kid_b64 = hexToBase64($key_id_hex);
-$k_b64 = hexToBase64($key_hex);
+// Convert HEX to base64url
+$kid_b64 = hexToBase64UrlSafe($key_id_hex);
+$k_b64   = hexToBase64UrlSafe($key_hex);
 
+// Output sesuai ClearKey spec
 echo json_encode([
     "keys" => [
         [
