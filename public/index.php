@@ -39,9 +39,12 @@ $key_id_hex = $raw[0];
 $key_hex = $raw[1];
 
 $kid_b64 = hexToBase64($key_id_hex);
-$k_b64 = hexToBase64($key_hex);
+$k_b64   = hexToBase64($key_hex);
 
-// Output JSON
+// ✅ Tambahkan Content-Type JSON
+header('Content-Type: application/json');
+
+// ✅ Output ClearKey License JSON
 echo json_encode([
     "keys" => [
         [
