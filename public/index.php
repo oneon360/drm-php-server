@@ -42,7 +42,6 @@ $kid_b64 = hexToBase64($key_id_hex);
 $k_b64 = hexToBase64($key_hex);
 
 // Output JSON
-header('Content-Type: application/json');
 echo json_encode([
     "keys" => [
         [
@@ -50,5 +49,6 @@ echo json_encode([
             "kid" => $kid_b64,
             "k"   => $k_b64
         ]
-    ]
+    ],
+    "type" => "temporary"
 ]);
