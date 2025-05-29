@@ -25,7 +25,7 @@ if (!$id || !preg_match('/^var\d+$/', $id)) {
 }
 
 // Lokasi file keylist.json
-$keyFile = __DIR__ . '/keylist.json'; // atau ganti ke '/var/www/keys/keylist.json' jika di Docker
+$keyFile = __DIR__ . ''/var/www/keys/keylist.json'; // atau ganti ke '/var/www/keys/keylist.json' jika di Docker
 
 if (!file_exists($keyFile)) {
     http_response_code(500);
