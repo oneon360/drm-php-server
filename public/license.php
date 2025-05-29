@@ -1,4 +1,11 @@
 <?php
+// Cek header khusus untuk memastikan ini dari Worker
+if (!isset($_SERVER['HTTP_X_WORKER_PROXY']) || $_SERVER['HTTP_X_WORKER_PROXY'] !== 'true') {
+    http_response_code(403);
+    echo json_encode(["error" => "Forbidden - direct access denied"]);
+    exit;
+}
+
 header('Content-Type: application/json');
 
 /**
@@ -18,7 +25,7 @@ if (!$id) {
     exit;
 }
 
-// File keylist.json ada di luar folder publik (Docker copy ke /var/www/keys)
+// File keylist.json ada di luar folder publik
 $keyFile = '/var/www/keys/keylist.json';
 
 if (!file_exists($keyFile)) {
