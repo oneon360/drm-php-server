@@ -1,57 +1,37 @@
 <?php
 header('Content-Type: application/json');
 
-// Daftar User-Agent whitelist IPTV player yang valid
-$allowedAgents = [
-    'kodi',             // Kodi
-    'exoplayer',        // ExoPlayer
-    'vlc',              // VLC player
-    'ffmpeg',           // FFmpeg
-    'chrome',           // Chrome (kadang dipakai player custom)
-    'mozilla',          // Mozilla Firefox (kadang dipakai player custom)
-    'samsungbrowser',   // Samsung browser (kadang player smart TV)
-    'applewebkit',      // Apple devices browser engine
-];
-
-// Daftar kata yang mengindikasikan bot/python/curl/etc yang mau diblokir
+// Daftar User-Agent mencurigakan yang ingin diblokir
 $blockAgents = [
     'python', 'requests', 'urllib', 'httpclient',
-    'curl', 'wget', 'scrapy', 'postman', 'php', 'bot',
+    'curl', 'wget', 'scrapy', 'postman',
+    'httpie', 'okhttp', 'insomnia', 'axios', 'java',
+    'powershell', 'php', 'bot', 'crawler', 'spider',
 ];
 
-// Ambil user-agent dari header
+// Ambil User-Agent
 $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
 
-// Fungsi untuk cek whitelist IPTV
-function isAllowedAgent($ua, $allowedAgents) {
-    foreach ($allowedAgents as $allowed) {
-        if (strpos($ua, $allowed) !== false) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Fungsi cek apakah mengandung agen bot
+// Cek apakah termasuk agen terblokir
 function isBlockedAgent($ua, $blockAgents) {
-    foreach ($blockAgents as $block) {
-        if (strpos($ua, $block) !== false) {
+    foreach ($blockAgents as $bad) {
+        if (strpos($ua, $bad) !== false) {
             return true;
         }
     }
     return false;
 }
 
-// Jika bukan dari IPTV whitelist dan terdeteksi bot, tolak akses
-if (!isAllowedAgent($ua, $allowedAgents) && isBlockedAgent($ua, $blockAgents)) {
-    header("HTTP/1.1 403 Forbidden");
+// Tolak jika terdeteksi agen tidak sah
+if (isBlockedAgent($ua, $blockAgents)) {
+    http_response_code(403);
     if (function_exists('fastcgi_finish_request')) {
         fastcgi_finish_request();
     }
     exit;
 }
 
-// --- lanjutkan script DRM key --- //
+// --- lanjutkan proses DRM seperti biasa ---
 
 function hexToBase64($hex) {
     return base64_encode(hex2bin($hex));
