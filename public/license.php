@@ -6,26 +6,25 @@ if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET']
     exit(json_encode(["error" => "Unauthorized"]));
 }
 
-header('Content-Type: application/json');
+// Gunakan content-type biner agar browser tidak menampilkan JSON
+header('Content-Type: application/octet-stream');
+header('Cache-Control: no-store');
 
-/**
- * Convert HEX to Base64 URL-safe (tanpa padding)
- */
+// Konversi HEX ke Base64 URL-safe
 function hexToBase64UrlSafe($hex) {
     $base64 = base64_encode(hex2bin($hex));
     return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
-// Ambil parameter ID dari URL
+// Ambil parameter ID
 $id = $_GET['id'] ?? null;
-
 if (!$id || !preg_match('/^var\d+$/', $id)) {
     http_response_code(400);
     echo json_encode(["error" => "Invalid or missing ID"]);
     exit;
 }
 
-// Lokasi file keylist.json
+// Path ke key file
 $keyFile = '/var/www/keys/keylist.json'; // Ganti sesuai kebutuhan lokasi sebenarnya
 
 if (!file_exists($keyFile)) {
@@ -35,7 +34,6 @@ if (!file_exists($keyFile)) {
 }
 
 $keys = json_decode(file_get_contents($keyFile), true);
-
 if (!isset($keys[$id])) {
     http_response_code(404);
     echo json_encode(["error" => "Key not found"]);
@@ -43,7 +41,6 @@ if (!isset($keys[$id])) {
 }
 
 $raw = explode(':', $keys[$id]);
-
 if (count($raw) !== 2) {
     http_response_code(500);
     echo json_encode(["error" => "Invalid key format"]);
@@ -53,19 +50,13 @@ if (count($raw) !== 2) {
 $key_id_hex = $raw[0];
 $key_hex    = $raw[1];
 
-// Convert HEX ke base64url
-$kid_b64 = hexToBase64UrlSafe($key_id_hex);
-$k_b64   = hexToBase64UrlSafe($key_hex);
-
-// Output sesuai ClearKey spec
+// Format sesuai ClearKey JSON
 echo json_encode([
-    "keys" => [
-        [
-            "kty" => "oct",
-            "kid" => $kid_b64,
-            "k"   => $k_b64
-        ]
-    ],
+    "keys" => [[
+        "kty" => "oct",
+        "kid" => hexToBase64UrlSafe($key_id_hex),
+        "k"   => hexToBase64UrlSafe($key_hex)
+    ]],
     "type" => "temporary"
 ]);
 exit;
