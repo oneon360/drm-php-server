@@ -1,8 +1,13 @@
 <?php
 header('Content-Type: application/json');
 
-function hexToBase64($hex) {
-    return base64_encode(hex2bin($hex));
+/**
+ * Convert HEX to Base64 URL-safe (tanpa padding)
+ * Cocok untuk DRM license format ala JavaScript
+ */
+function hexToBase64UrlSafe($hex) {
+    $base64 = base64_encode(hex2bin($hex));
+    return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
 $id = $_GET['id'] ?? null;
@@ -13,6 +18,7 @@ if (!$id) {
     exit;
 }
 
+// File keylist.json ada di luar folder publik (Docker copy ke /var/www/keys)
 $keyFile = '/var/www/keys/keylist.json';
 
 if (!file_exists($keyFile)) {
@@ -40,9 +46,11 @@ if (count($raw) !== 2) {
 $key_id_hex = $raw[0];
 $key_hex = $raw[1];
 
-$kid_b64 = hexToBase64($key_id_hex);
-$k_b64 = hexToBase64($key_hex);
+// Convert HEX to base64url
+$kid_b64 = hexToBase64UrlSafe($key_id_hex);
+$k_b64   = hexToBase64UrlSafe($key_hex);
 
+// Output sesuai ClearKey spec
 echo json_encode([
     "keys" => [
         [
