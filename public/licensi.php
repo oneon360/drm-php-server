@@ -14,7 +14,7 @@ if (!$id) {
     exit;
 }
 
-$keyFile = dirname(__DIR__) . '/keys/keylist.json';
+$keyFile = dirname(__DIR__) . '/var/www/keys/keylist.json';
 
 if (!file_exists($keyFile)) {
     http_response_code(500);
