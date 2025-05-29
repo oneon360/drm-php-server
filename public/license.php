@@ -2,6 +2,7 @@
 // Blokir akses langsung yang tidak mengandung secret header
 if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET'] !== 'abc123') {
     http_response_code(403);
+    header('Content-Type: application/json');
     exit(json_encode(["error" => "Unauthorized"]));
 }
 
@@ -25,7 +26,7 @@ if (!$id || !preg_match('/^var\d+$/', $id)) {
 }
 
 // Lokasi file keylist.json
-$keyFile = __DIR__ . ''/var/www/keys/keylist.json'; // atau ganti ke '/var/www/keys/keylist.json' jika di Docker
+$keyFile = '/var/www/keys/keylist.json'; // Ganti sesuai kebutuhan lokasi sebenarnya
 
 if (!file_exists($keyFile)) {
     http_response_code(500);
