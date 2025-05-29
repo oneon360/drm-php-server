@@ -5,7 +5,7 @@ header('Pragma: no-cache');
 header('Expires: 0');
 
 /**
- * Konversi HEX ke base64 URL-safe (tanpa padding)
+ * HEX to base64 URL-safe (no padding)
  */
 function hexToBase64UrlSafe($hex) {
     $base64 = base64_encode(hex2bin($hex));
@@ -13,50 +13,34 @@ function hexToBase64UrlSafe($hex) {
 }
 
 /**
- * Deteksi User-Agent mencurigakan dan bot termasuk spoofed browser
+ * Deteksi hanya Kodi/IPTV yang diizinkan
  */
-function isSuspiciousClient() {
+function isAllowedClient() {
     $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
-    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-    $encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
-    $conn = $_SERVER['HTTP_CONNECTION'] ?? '';
-    $fetch = $_SERVER['HTTP_SEC_FETCH_SITE'] ?? '';
-    $referer = $_SERVER['HTTP_REFERER'] ?? '';
-    $ip = $_SERVER['REMOTE_ADDR'];
 
-    // Daftar User-Agent umum yang mencurigakan
-    $blockedUAs = [
-        'curl', 'wget', 'python', 'php', 'go-http-client', 'postman', 'httpie',
-        'httpclient', 'axios', 'node', 'java', 'libwww', 'perl', 'ruby'
+    // Ijinkan hanya pemutar IPTV seperti Kodi
+    $allowed = [
+        'kodi',               // Kodi
+        'inputstream.adaptive', // Modul lisensi Kodi
+        'vlc',                // opsional: VLC (jika kamu mau)
+        'iptv',               // generic
     ];
-    foreach ($blockedUAs as $bad) {
-        if (strpos($ua, $bad) !== false) return true;
-    }
 
-    // Deteksi penyamaran: tampak seperti browser tapi tidak sepenuhnya
-    if (
-        stripos($ua, 'mozilla') !== false && // nyamar jadi browser
-        (
-            stripos($conn, 'keep-alive') !== false ||
-            $fetch === 'same-origin' ||
-            stripos($referer, 'example.com') !== false
-        ) &&
-        stripos($encoding, 'gzip') === false // requests default: tidak pakai gzip
-    ) {
-        return true;
+    foreach ($allowed as $ok) {
+        if (strpos($ua, $ok) !== false) return true;
     }
 
     return false;
 }
 
-// Blokir akses mencurigakan
-if (isSuspiciousClient()) {
+// Tolak semua selain pemutar
+if (!isAllowedClient()) {
     http_response_code(403);
-    echo json_encode(["error" => "Forbidden - suspected bot"]);
+    echo json_encode(["error" => "Access denied"]);
     exit;
 }
 
-// Validasi ID
+// Ambil ID dari parameter
 $id = $_GET['id'] ?? null;
 if (!$id) {
     http_response_code(400);
@@ -64,7 +48,7 @@ if (!$id) {
     exit;
 }
 
-// Lokasi file key
+// Lokasi key
 $keyFile = '/var/www/keys/keylist.json';
 if (!file_exists($keyFile)) {
     http_response_code(500);
@@ -86,14 +70,12 @@ if (count($raw) !== 2) {
     exit;
 }
 
-// Konversi ke format ClearKey
 $key_id_hex = $raw[0];
-$key_hex    = $raw[1];
+$key_hex = $raw[1];
 
 $kid_b64 = hexToBase64UrlSafe($key_id_hex);
-$k_b64   = hexToBase64UrlSafe($key_hex);
+$k_b64 = hexToBase64UrlSafe($key_hex);
 
-// Output JSON sesuai ClearKey
 echo json_encode([
     "keys" => [
         [
