@@ -86,4 +86,5 @@ echo json_encode([
     "type" => "temporary"
 ]);
 exit;
-?> 
+?>
+
