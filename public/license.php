@@ -41,31 +41,32 @@ function hexToBase64UrlSafe($hex) {
     return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
-// Ambil parameter ID
-$id = $_GET['id'] ?? null;
-if (!$id || !preg_match('/^var\d+$/', $id)) {
+// Ambil parameter acak (misal ?k=9aB4xZ)
+$k = $_GET['k'] ?? null;
+if (!$k || !preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
     http_response_code(400);
-    echo json_encode(["error" => "Invalid or missing ID"]);
+    echo json_encode(["error" => "Invalid or missing parameter"]);
     exit;
 }
 
-// Path ke key file
-$keyFile = '/var/www/keys/keylist.json'; // Ganti sesuai path server Anda
-
+// Path ke file key
+$keyFile = '/var/www/keys/keylist.json'; // Ganti sesuai path Anda
 if (!file_exists($keyFile)) {
     http_response_code(500);
     echo json_encode(["error" => "Key file not found"]);
     exit;
 }
 
+// Ambil JSON dan validasi format
 $keys = json_decode(file_get_contents($keyFile), true);
-if (!isset($keys[$id])) {
+if (!isset($keys[$k]) || !isset($keys[$k]['key'])) {
     http_response_code(404);
     echo json_encode(["error" => "Key not found"]);
     exit;
 }
 
-$raw = explode(':', $keys[$id]);
+// Pisahkan key ID dan key dari format "id:key"
+$raw = explode(':', $keys[$k]['key']);
 if (count($raw) !== 2) {
     http_response_code(500);
     echo json_encode(["error" => "Invalid key format"]);
@@ -75,7 +76,7 @@ if (count($raw) !== 2) {
 $key_id_hex = $raw[0];
 $key_hex    = $raw[1];
 
-// Format sesuai ClearKey JSON
+// Output ClearKey JSON
 echo json_encode([
     "keys" => [[
         "kty" => "oct",
