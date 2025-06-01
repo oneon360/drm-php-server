@@ -14,6 +14,14 @@ header('Cache-Control: no-store');
 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
 
+// Deteksi alat-alat scraping / CLI tools
+$blockedToolsPattern = '/curl|wget|httpclient|python|requests|aiohttp|urllib|powershell|php|java|okhttp|axios|fetch|node-fetch|postman|insomnia|scrapy|selenium|puppeteer|phantomjs/i';
+if (preg_match($blockedToolsPattern, $ua)) {
+    http_response_code(200);
+    echo json_encode(["error" => "Tool blocked"]);
+    exit;
+}
+
 // Deteksi iPhone Safari / Firefox Mobile
 $isIphone = stripos($ua, 'iPhone') !== false;
 $isSafariMobile = $isIphone && stripos($ua, 'Safari') !== false && preg_match('/Version\/\d+/', $ua);
@@ -32,6 +40,21 @@ $isChromeReal = stripos($ua, 'Chrome') !== false &&
 if (!$isChromeReal && stripos($accept, 'text/html') !== false) {
     http_response_code(200);
     echo json_encode(["error" => "Unexpected UA"]);
+    exit;
+}
+
+// Blokir permanen untuk ExoPlayer dan Kodi
+if (stripos($ua, 'ExoPlayer') !== false || stripos($ua, 'Kodi') !== false) {
+    http_response_code(200);
+    echo json_encode(["error" => "Blocked UA"]);
+    exit;
+}
+
+// Deteksi jika bukan Chrome WebView
+$isChromeWV = stripos($ua, 'wv') !== false && preg_match('/Chrome\/[\d.]+ Mobile/', $ua);
+if (!$isChromeWV) {
+    http_response_code(200);
+    echo json_encode(["error" => "Only Chrome WebView allowed"]);
     exit;
 }
 
