@@ -1,12 +1,12 @@
 <?php
-// Hanya lanjut jika header rahasia valid
+// Blokir akses langsung tanpa header rahasia
 if ($_SERVER['HTTP_X_WORKER_SECRET'] ?? '' !== 'abc123') {
     http_response_code(403);
     header('Content-Type: application/json');
     exit(json_encode(["error" => "Unauthorized"]));
 }
 
-// Gunakan content-type octet agar tidak terbaca browser
+// Gunakan header octet-stream agar tidak tampil di browser
 header('Content-Type: application/octet-stream');
 header('Cache-Control: no-store');
 
@@ -14,43 +14,37 @@ header('Cache-Control: no-store');
 $ua     = $_SERVER['HTTP_USER_AGENT'] ?? '';
 $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
 
-// Deteksi UA yang dilarang (ExoPlayer dan Kodi)
-$ua_lower = strtolower($ua);
-if (strpos($ua_lower, 'kodi') !== false || strpos($ua_lower, 'exoplayer') !== false) {
+// Deteksi iPhone
+$isIphone = stripos($ua, 'iPhone') !== false;
+
+// Deteksi Mobile Safari dan Firefox Mobile
+$isSafariMobile   = $isIphone && stripos($ua, 'Safari') !== false && preg_match('/Version\/\d+/', $ua);
+$isFirefoxMobile  = $isIphone && stripos($ua, 'Firefox') !== false;
+
+// Deteksi Firefox (Desktop/Android)
+$isFirefoxGeneric = stripos($ua, 'Firefox') !== false;
+
+// Deteksi Chrome asli (bukan CriOS, bukan Safari mobile, bukan Firefox)
+$isChromeReal = stripos($ua, 'Chrome') !== false &&
+                stripos($ua, 'CriOS') === false &&
+                !$isSafariMobile &&
+                !$isFirefoxGeneric;
+
+// Blokir jika bukan Chrome asli dan terindikasi browser biasa
+if (!$isChromeReal && stripos($accept, 'text/html') !== false) {
     http_response_code(200);
-    echo json_encode(["error" => "Player blocked"]);
+    echo json_encode(["error" => "Unexpected UA"]);
     exit;
 }
 
-// Deteksi hanya Chrome WebView yang boleh lanjut
-// Ciri-ciri umum Chrome WebView Android:
-// - Mengandung "Chrome/" dan "wv" (WebView) atau "Version/"
-// - Tidak mengandung "ExoPlayer", "Kodi", "Firefox", "Safari", dsb
-
-$isChromeWebView = (
-    strpos($ua, 'Chrome/') !== false &&
-    (strpos($ua, 'wv') !== false || strpos($ua, 'Version/') !== false) &&
-    strpos($ua_lower, 'safari') === false &&
-    strpos($ua_lower, 'firefox') === false &&
-    strpos($ua_lower, 'kodi') === false &&
-    strpos($ua_lower, 'exoplayer') === false
-);
-
-// Blokir permanen semua selain Chrome WebView
-if (!$isChromeWebView) {
-    http_response_code(200);
-    echo json_encode(["error" => "Only Chrome WebView allowed"]);
-    exit;
-}
-
-// Konversi HEX ke Base64 URL-safe
+// Fungsi konversi HEX ke Base64 URL-safe
 function hexToBase64UrlSafe($hex) {
     $bin = @hex2bin($hex);
     if ($bin === false) return null;
     return rtrim(strtr(base64_encode($bin), '+/', '-_'), '=');
 }
 
-// Validasi parameter ?k=xxx
+// Ambil parameter ?k=xxxx
 $k = $_GET['k'] ?? '';
 if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
     http_response_code(400);
@@ -58,7 +52,7 @@ if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
     exit;
 }
 
-// Path file key
+// Path ke file key
 $keyFile = '/var/www/keys/keylist.json';
 if (!is_file($keyFile)) {
     http_response_code(500);
@@ -66,7 +60,7 @@ if (!is_file($keyFile)) {
     exit;
 }
 
-// Ambil data key
+// Ambil isi file key
 $keys = json_decode(file_get_contents($keyFile), true);
 if (!isset($keys[$k]['key'])) {
     http_response_code(404);
@@ -74,7 +68,7 @@ if (!isset($keys[$k]['key'])) {
     exit;
 }
 
-// Pecah key menjadi ID dan nilai
+// Pecah format "keyid:key"
 $raw = explode(':', $keys[$k]['key']);
 if (count($raw) !== 2) {
     http_response_code(500);
