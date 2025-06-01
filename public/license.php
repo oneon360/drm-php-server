@@ -1,49 +1,73 @@
 <?php
-
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Cache-Control: no-store');
-header('Server:');
-header('X-Powered-By:');
-
+// Fungsi untuk merespons JSON dengan HTTP 200
 function respond($data) {
-    $data['_trace'] = substr(md5(mt_rand()), 0, 8);
-    $data['_ts'] = time() * 1000;
-    echo json_encode($data);
-    exit;
+    http_response_code(200);
+    header('Content-Type: application/json');
+    header('Cache-Control: no-store');
+    exit(json_encode([
+        ...$data,
+        '_trace' => substr(md5(mt_rand()), 0, 8),
+        '_ts' => time() * 1000
+    ]));
 }
 
-// Validasi header X-Worker-Secret
-$workerSecret = $_SERVER['HTTP_X_WORKER_SECRET'] ?? '';
-if ($workerSecret !== 'abc123') {
-    respond(['error' => 'Unauthorized']);
+// Validasi secret dari Cloudflare Worker
+if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET'] !== 'abc123') {
+    respond(["error" => "Unexpected response"]);
 }
 
-// Ambil parameter
-$k = $_GET['k'] ?? '';
-if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
-    respond(['error' => 'Invalid key']);
-}
+// Gunakan Content-Type octet-stream agar tidak dibaca oleh browser
+header('Content-Type: application/octet-stream');
+header('Cache-Control: no-store');
 
-// Validasi header penting
+// Validasi User-Agent dan Accept: blokir jika mengandung text/html (indikasi browser biasa)
 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-
-// Blokir browser (jika Accept mengandung text/html)
 if (stripos($accept, 'text/html') !== false) {
-    respond(['error' => 'Unexpected response']);
+    respond(["error" => "Unexpected response"]);
 }
 
-// Blokir alat scraping dan script tools (toolUABlock)
-if (preg_match('/(curl|wget|httpclient|python|requests|aiohttp|urllib|httpie|powershell|php|perl|ruby|java|okhttp|libwww|fetch|node-fetch|axios|go-http-client|restsharp|csharp|net\/|postman|insomnia|superagent|got|reqwest|khttp|mechanize|lwp::simple|apache-httpclient|scrapy|selenium|puppeteer|phantomjs|winhttp|wininet|rest-client|r-curl|grequests|hyper)/i', $ua)) {
-    respond(['error' => 'Unexpected response']);
+// Fungsi untuk encode Base64 URL-Safe
+function hexToBase64UrlSafe($hex) {
+    $base64 = base64_encode(hex2bin($hex));
+    return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
-// Simulasi key dari backend DRM
-$dummyKey = base64_encode(hash_hmac('sha256', $k, 'my-secret', true));
+// Ambil dan validasi parameter `k`
+$k = $_GET['k'] ?? '';
+if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
+    respond(["error" => "Unexpected response"]);
+}
 
-// Berikan respons JSON dengan license key
-respond([
-    'key' => $dummyKey,
-    'status' => 'ok'
+// Path ke file key list
+$keyFile = '/var/www/keys/keylist.json'; // ← Ubah sesuai struktur server Anda
+if (!file_exists($keyFile)) {
+    respond(["error" => "Unexpected response"]);
+}
+
+// Baca dan parsing key list
+$keys = json_decode(file_get_contents($keyFile), true);
+if (!is_array($keys) || !isset($keys[$k]['key'])) {
+    respond(["error" => "Unexpected response"]);
+}
+
+// Format key: "keyid:clearkey"
+$raw = explode(':', $keys[$k]['key']);
+if (count($raw) !== 2) {
+    respond(["error" => "Unexpected response"]);
+}
+
+$key_id_hex = $raw[0];
+$key_hex    = $raw[1];
+
+// Output ClearKey JSON (license)
+echo json_encode([
+    "keys" => [[
+        "kty" => "oct",
+        "kid" => hexToBase64UrlSafe($key_id_hex),
+        "k"   => hexToBase64UrlSafe($key_hex)
+    ]],
+    "type" => "temporary"
 ]);
+exit;
+?>
