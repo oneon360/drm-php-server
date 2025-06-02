@@ -43,7 +43,35 @@ $encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
 // ===================
 
 // Blokir User-Agent mencurigakan (bot, curl, python, wget, dll)
-$bad_ua_keywords = ['curl', 'wget', 'bot', 'spider', 'crawl', 'python', 'java', 'libwww', 'httpclient'];
+$bad_ua_keywords = [
+    // Tools CLI umum
+    'curl', 'wget', 'httpie', 'fetch', 'lwp-request', 'http_request2',
+
+    // Bot dan crawler klasik
+    'bot', 'spider', 'crawl', 'crawler', 'slurp', 'yandex', 'baiduspider', 'bingbot', 'ahrefs', 'semrush', 'mj12bot',
+
+    // Tools scraping modern
+    'python', 'java', 'perl', 'go-http-client', 'okhttp', 'axios', 'reqwest', 'scrapy', 'requests', 'aiohttp', 'urllib', 'mechanize',
+
+    // Node.js & headless
+    'node-fetch', 'got', 'puppeteer', 'playwright', 'headless', 'phantomjs', 'nightmare',
+
+    // HTTP libraries & user-agent default
+    'libwww', 'httpclient', 'http-client', 'python-requests', 'jakarta', 'unirest', 'axios/',
+
+    // Tools eksplorasi API
+    'postman', 'insomnia', 'rest-client', 'paw/', 'advanced rest client', 'hoppscotch',
+
+    // Emulator / device spoofing
+    'cfnetwork', 'okhttp', 'dalvik', 'java/', 'react-native', 'expo', 'electron',
+
+    // PowerShell & Azure
+    'powershell', 'microsoft azure', 'azure-cli',
+
+    // Fake browser / invalid
+    'unknown', 'undefined', 'mozilla/5.0 (compatible;)', 'java/', 'python-urllib'
+];
+
 foreach ($bad_ua_keywords as $bad) {
     if (stripos($ua, $bad) !== false) {
         respond(["error" => "Access denied"]);
