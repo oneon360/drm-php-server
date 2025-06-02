@@ -30,12 +30,49 @@ if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET']
 header('Content-Type: application/octet-stream');
 header('Cache-Control: no-store');
 
-// Validasi User-Agent dan Accept: blokir jika mengandung text/html (indikasi browser biasa)
+// Ambil header penting
 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-if (stripos($accept, 'text/html') !== false) {
-    respond(["error" => "Unexpected response"]);
+$sec_fetch = $_SERVER['HTTP_SEC_FETCH_MODE'] ?? '';
+$sec_ch_ua = $_SERVER['HTTP_SEC_CH_UA'] ?? '';
+$connection = $_SERVER['HTTP_CONNECTION'] ?? '';
+$encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
+
+// ===================
+// === ANTI-BOT ====
+// ===================
+
+// Blokir User-Agent mencurigakan (bot, curl, python, wget, dll)
+$bad_ua_keywords = ['curl', 'wget', 'bot', 'spider', 'crawl', 'python', 'java', 'libwww', 'httpclient'];
+foreach ($bad_ua_keywords as $bad) {
+    if (stripos($ua, $bad) !== false) {
+        respond(["error" => "Access denied"]);
+    }
 }
+
+// Blokir jika Accept mengandung text/html (indikasi browser)
+if (stripos($accept, 'text/html') !== false) {
+    respond(["error" => "Access denied"]);
+}
+
+// Blokir jika sec-fetch-* atau sec-ch-ua muncul (indikasi browser modern)
+if (!empty($sec_fetch) || !empty($sec_ch_ua)) {
+    respond(["error" => "Access denied"]);
+}
+
+// Blokir koneksi aneh atau terlalu umum (indikasi tools HTTP)
+if (stripos($connection, 'keep-alive') !== false && empty($ua)) {
+    respond(["error" => "Access denied"]);
+}
+
+// Blokir jika Accept-Encoding tidak berisi gzip (banyak bot lupa set ini)
+if (stripos($encoding, 'gzip') === false) {
+    respond(["error" => "Access denied"]);
+}
+
+// ==============================
+// === VALIDASI PARAMETER KEY ==
+// ==============================
 
 // Fungsi untuk encode Base64 URL-Safe
 function hexToBase64UrlSafe($hex) {
