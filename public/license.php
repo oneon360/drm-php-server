@@ -11,6 +11,16 @@ function respond($data) {
     ]));
 }
 
+// Blokir akses jika tidak menggunakan HTTPS
+$is_https = (
+    (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+    $_SERVER['SERVER_PORT'] == 443 ||
+    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+);
+if (!$is_https) {
+    respond(["error" => "HTTPS required"]);
+}
+
 // Validasi secret dari Cloudflare Worker
 if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET'] !== 'abc123') {
     respond(["error" => "Unexpected response"]);
