@@ -1,24 +1,41 @@
 <?php
-header("Content-Type: application/json");
-
-function respond($response) {
-    echo json_encode($response);
-    exit;
+// Fungsi untuk merespons JSON dengan HTTP 200
+function respond($data) {
+    http_response_code(200);
+    header('Content-Type: application/json');
+    header('Cache-Control: no-store');
+    exit(json_encode([
+        ...$data,
+        '_trace' => substr(md5(mt_rand()), 0, 8),
+        '_ts' => time() * 1000
+    ]));
 }
 
-function hexToBase64UrlSafe($hex) {
-    $base64 = base64_encode(hex2bin($hex));
-    return rtrim(strtr($base64, '+/', '-_'), '=');
+// Blokir akses jika tidak menggunakan HTTPS
+$is_https = (
+    (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+    $_SERVER['SERVER_PORT'] == 443 ||
+    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+);
+if (!$is_https) {
+    respond(["error" => "HTTPS required"]);
 }
 
-// --- Deteksi isCurlLike ---
-function is_curl_like() {
-    $headers = getallheaders();
-    $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
-    $accept = strtolower($_SERVER['HTTP_ACCEPT'] ?? '');
-    $encoding = strtolower($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '');
-    $connection = strtolower($_SERVER['HTTP_CONNECTION'] ?? '');
+// Set response agar tidak terbaca browser
+header('Content-Type: application/octet-stream');
+header('Cache-Control: no-store');
 
+// Ambil header penting
+$headers = getallheaders();
+$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+$accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+$sec_fetch = $_SERVER['HTTP_SEC_FETCH_MODE'] ?? '';
+$sec_ch_ua = $_SERVER['HTTP_SEC_CH_UA'] ?? '';
+$connection = $_SERVER['HTTP_CONNECTION'] ?? '';
+$encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
+
+// Deteksi fingerprint alat curl-like
+function is_curl_like($ua, $accept, $encoding, $connection, $headers) {
     if (
         empty($accept) || strpos($accept, '*/*') !== false ||
         empty($encoding) ||
@@ -29,8 +46,8 @@ function is_curl_like() {
     }
 
     if (
-        (strpos($ua, 'exoplayer') !== false && ($headers['x-requested-with'] ?? '') !== 'com.google.android.exoplayer') ||
-        (strpos($ua, 'kodi') !== false && ($headers['x-requested-with'] ?? '') !== 'org.xbmc.kodi')
+        (stripos($ua, 'exoplayer') !== false && ($headers['x-requested-with'] ?? '') !== 'com.google.android.exoplayer') ||
+        (stripos($ua, 'kodi') !== false && ($headers['x-requested-with'] ?? '') !== 'org.xbmc.kodi')
     ) {
         return true;
     }
@@ -38,82 +55,84 @@ function is_curl_like() {
     return false;
 }
 
-if (is_curl_like()) {
-    respond(["status" => "error", "message" => "iscurllike_detected"]);
+if (is_curl_like($ua, $accept, $encoding, $connection, $headers)) {
+    respond(["error" => "Blocked by curl-like filter"]);
 }
 
-// --- Validasi Header dan UA ---
-$ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
-$accept = strtolower($_SERVER['HTTP_ACCEPT'] ?? '');
-$contentType = strtolower($_SERVER['CONTENT_TYPE'] ?? '');
-$xReqWith = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
-$secFetch = isset($_SERVER['HTTP_SEC_FETCH_MODE']) || isset($_SERVER['HTTP_SEC_FETCH_SITE']);
-
-if (
-    strpos($ua, 'curl') !== false || strpos($ua, 'wget') !== false || strpos($ua, 'python') !== false
-) {
-    respond(["status" => "error", "message" => "ua_blocked"]);
+// Blokir User-Agent mencurigakan
+$bad_ua_keywords = [
+    'curl','wget','httpie','fetch','lwp-request','http_request2',
+    'bot','spider','crawl','crawler','slurp','yandex','baiduspider','bingbot','ahrefs','semrush',
+    'python','java','perl','go-http-client','okhttp','axios','reqwest','scrapy','requests','aiohttp','urllib','mechanize',
+    'node-fetch','got','puppeteer','playwright','headless','phantomjs','nightmare',
+    'libwww','httpclient','http-client','python-requests','jakarta','unirest','axios/',
+    'postman','insomnia','rest-client','paw/','advanced rest client','hoppscotch',
+    'cfnetwork','dalvik','java/','react-native','expo','electron',
+    'powershell','microsoft azure','azure-cli',
+    'unknown','undefined','mozilla/5.0 (compatible;)','java/','python-urllib'
+];
+foreach ($bad_ua_keywords as $bad) {
+    if (stripos($ua, $bad) !== false) {
+        respond(["error" => "Access denied"]);
+    }
 }
 
-if ($contentType === "application/octet-stream") {
-    respond(["status" => "error", "message" => "invalid_content_type"]);
+// Blokir indikasi browser modern
+if (stripos($accept, 'text/html') !== false || !empty($sec_fetch) || !empty($sec_ch_ua)) {
+    respond(["error" => "Access denied"]);
 }
 
-if ($secFetch || strpos($accept, 'text/html') !== false) {
-    respond(["status" => "error", "message" => "browser_like_request"]);
+// Blokir koneksi aneh
+if (stripos($connection, 'keep-alive') !== false && empty($ua)) {
+    respond(["error" => "Access denied"]);
 }
 
-if (strpos($ua, "exoplayer") !== false && $xReqWith !== "com.google.android.exoplayer") {
-    respond(["status" => "error", "message" => "spoofed_exoplayer"]);
+// Blokir Accept-Encoding tanpa gzip
+if (stripos($encoding, 'gzip') === false) {
+    respond(["error" => "Access denied"]);
 }
 
-$allowed = false;
-if (
-    (strpos($ua, "exoplayer") !== false && $xReqWith === "com.google.android.exoplayer") ||
-    (strpos($ua, "shaka") !== false) ||
-    (strpos($ua, "kodi") !== false) ||
-    (strpos($ua, "vlc") !== false)
-) {
-    $allowed = true;
-}
-if (!$allowed) {
-    respond(["status" => "error", "message" => "unauthorized_player"]);
+// ==============================
+// === VALIDASI PARAMETER KEY ==
+// ==============================
+
+function hexToBase64UrlSafe($hex) {
+    $base64 = base64_encode(hex2bin($hex));
+    return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
-// --- Load key list dari file ---
-$keyFile = '/var/www/keys/keylist.json';
+$k = $_GET['k'] ?? '';
+if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
+    respond(["error" => "Unexpected response"]);
+}
+
+// Path ke file JSON DRM key list
+$keyFile = '/var/www/keys/keylist.json'; // ← Sesuaikan lokasi file Anda
 if (!file_exists($keyFile)) {
-    respond(["status" => "error", "message" => "unexpected_response"]);
+    respond(["error" => "Unexpected response"]);
 }
 
-$keyJson = file_get_contents($keyFile);
-$keyList = json_decode($keyJson, true);
-if (!is_array($keyList)) {
-    respond(["status" => "error", "message" => "key_file_invalid"]);
+$keys = json_decode(file_get_contents($keyFile), true);
+if (!is_array($keys) || !isset($keys[$k]['key'])) {
+    respond(["error" => "Unexpected response"]);
 }
 
-// --- Ambil ID dari parameter ---
-$id = $_GET['id'] ?? $_POST['id'] ?? '';
-if (!preg_match('/^[a-zA-Z0-9]+$/', $id)) {
-    respond(["status" => "error", "message" => "invalid_id_format"]);
+$raw = explode(':', $keys[$k]['key']);
+if (count($raw) !== 2) {
+    respond(["error" => "Unexpected response"]);
 }
 
-if (!isset($keyList[$id])) {
-    respond(["status" => "error", "message" => "key_not_found"]);
-}
+$key_id_hex = $raw[0];
+$key_hex    = $raw[1];
 
-// --- Format respon DRM key ---
-$keyData = $keyList[$id];
-list($key_hex, $keyid_hex) = explode(':', $keyData['key']);
-$key_b64 = hexToBase64UrlSafe($key_hex);
-$keyid_b64 = hexToBase64UrlSafe($keyid_hex);
-
-respond([
-    "status" => "ok",
-    "message" => "key_granted",
-    "key" => [
-        "name" => $keyData['name'],
-        "key" => $key_b64,
-        "kid" => $keyid_b64
-    ]
+// Output ClearKey JSON license
+echo json_encode([
+    "keys" => [[
+        "kty" => "oct",
+        "kid" => hexToBase64UrlSafe($key_id_hex),
+        "k"   => hexToBase64UrlSafe($key_hex)
+    ]],
+    "type" => "temporary"
 ]);
+exit;
+?>
