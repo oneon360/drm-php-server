@@ -11,6 +11,28 @@ function respond($data) {
     ]));
 }
 
+// Fungsi modular untuk deteksi browser palsu (spoofing UA browser tapi bukan permintaan DRM/browser asli)
+function is_fake_browser(string $ua, string $accept, string $sec_fetch, string $sec_ch_ua): bool {
+    $ua = strtolower($ua);
+    $accept = strtolower($accept);
+    $sec_fetch = strtolower($sec_fetch);
+    $sec_ch_ua = strtolower($sec_ch_ua);
+
+    $has_browser_headers = !empty($sec_fetch) || !empty($sec_ch_ua);
+    $is_drm_request = (
+        strpos($accept, 'application/json') !== false ||
+        strpos($accept, 'application/octet-stream') !== false
+    );
+
+    if (preg_match('/(chrome|safari|mozilla|firefox)/i', $ua)) {
+        if (!$has_browser_headers && !$is_drm_request) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Blokir akses jika tidak menggunakan HTTPS
 $is_https = (
     (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
@@ -39,36 +61,19 @@ $connection = $_SERVER['HTTP_CONNECTION'] ?? '';
 $encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
 
 // ===================
-// === ANTI-BOT ====
+// === ANTI-BOT ======
 // ===================
 
 // Blokir User-Agent mencurigakan (bot, curl, python, wget, dll)
 $bad_ua_keywords = [
-    // Tools CLI umum
     'curl', 'wget', 'httpie', 'fetch', 'lwp-request', 'http_request2',
-
-    // Bot dan crawler klasik
     'bot', 'spider', 'crawl', 'crawler', 'slurp', 'yandex', 'baiduspider', 'bingbot', 'ahrefs', 'semrush', 'mj12bot',
-
-    // Tools scraping modern
     'python', 'java', 'perl', 'go-http-client', 'okhttp', 'axios', 'reqwest', 'scrapy', 'requests', 'aiohttp', 'urllib', 'mechanize',
-
-    // Node.js & headless
     'node-fetch', 'got', 'puppeteer', 'playwright', 'headless', 'phantomjs', 'nightmare',
-
-    // HTTP libraries & user-agent default
     'libwww', 'httpclient', 'http-client', 'python-requests', 'jakarta', 'unirest', 'axios/',
-
-    // Tools eksplorasi API
     'postman', 'insomnia', 'rest-client', 'paw/', 'advanced rest client', 'hoppscotch',
-
-    // Emulator / device spoofing
     'cfnetwork', 'okhttp', 'dalvik', 'java/', 'react-native', 'expo', 'electron',
-
-    // PowerShell & Azure
     'powershell', 'microsoft azure', 'azure-cli',
-
-    // Fake browser / invalid
     'unknown', 'undefined', 'mozilla/5.0 (compatible;)', 'java/', 'python-urllib'
 ];
 
@@ -78,18 +83,10 @@ foreach ($bad_ua_keywords as $bad) {
     }
 }
 
-// Deteksi browser palsu hanya jika User-Agent mengandung browser populer,
-// tapi tidak menyertakan tanda-tanda permintaan JSON atau DRM (misalnya tidak ada Accept: application/json)
-if (preg_match('/(chrome|safari|mozilla|firefox)/i', $ua)) {
-    $is_browser = !empty($sec_fetch) || !empty($sec_ch_ua);
-    $is_drm_request = stripos($accept, 'application/json') !== false || stripos($accept, 'application/octet-stream') !== false;
-
-    // Jika mengaku browser tapi tidak menunjukkan tanda akses DRM atau JSON
-    if (!$is_browser && !$is_drm_request) {
-        respond(["error" => "Browser spoofing or invalid DRM request"]);
-    }
+// Deteksi browser palsu (mengaku browser tapi header tidak cocok, bukan permintaan JSON/DRM)
+if (is_fake_browser($ua, $accept, $sec_fetch, $sec_ch_ua)) {
+    respond(["error" => "Browser spoofing or invalid DRM request"]);
 }
-
 
 // Blokir jika Accept mengandung text/html (indikasi browser)
 if (stripos($accept, 'text/html') !== false) {
@@ -112,34 +109,29 @@ if (stripos($encoding, 'gzip') === false) {
 }
 
 // ==============================
-// === VALIDASI PARAMETER KEY ==
+// === VALIDASI PARAMETER KEY ===
 // ==============================
 
-// Fungsi untuk encode Base64 URL-Safe
 function hexToBase64UrlSafe($hex) {
     $base64 = base64_encode(hex2bin($hex));
     return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
-// Ambil dan validasi parameter `k`
 $k = $_GET['k'] ?? '';
 if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
     respond(["error" => "Unexpected response"]);
 }
 
-// Path ke file key list
-$keyFile = '/var/www/keys/keylist.json'; // ← Ubah sesuai struktur server Anda
+$keyFile = '/var/www/keys/keylist.json';
 if (!file_exists($keyFile)) {
     respond(["error" => "Unexpected response"]);
 }
 
-// Baca dan parsing key list
 $keys = json_decode(file_get_contents($keyFile), true);
 if (!is_array($keys) || !isset($keys[$k]['key'])) {
     respond(["error" => "Unexpected response"]);
 }
 
-// Format key: "keyid:clearkey"
 $raw = explode(':', $keys[$k]['key']);
 if (count($raw) !== 2) {
     respond(["error" => "Unexpected response"]);
@@ -148,7 +140,6 @@ if (count($raw) !== 2) {
 $key_id_hex = $raw[0];
 $key_hex    = $raw[1];
 
-// Output ClearKey JSON (license)
 echo json_encode([
     "keys" => [[
         "kty" => "oct",
