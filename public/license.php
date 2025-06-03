@@ -1,14 +1,14 @@
 <?php
-// JSON DRM key store (seharusnya disimpan secara aman, misal database)
+// DRM key store (idealnya dari database, dienkripsi)
 $drm_keys = [
     "9aB4xZ" => ["name" => "VAR1", "key" => "ec7ee27d83764e4b845c48cca31c8eef:9c0e4191203fccb0fde34ee29999129e"],
     "T5eR1d" => ["name" => "VAR2", "key" => "7eea72d6075245a99ee3255603d58853:6848ef60575579bf4d415db1032153ed"]
 ];
 
-// Always respond as application/json
+// Always respond JSON
 header("Content-Type: application/json");
 
-// Return response function
+// Response function
 function respond($status, $message = null, $key = null) {
     echo json_encode([
         "status" => $status,
@@ -18,7 +18,13 @@ function respond($status, $message = null, $key = null) {
     exit;
 }
 
-// --- Deteksi alat seperti curl atau isCurlLike ---
+// Convert HEX to Base64URL-safe
+function hexToBase64UrlSafe($hex) {
+    $base64 = base64_encode(hex2bin($hex));
+    return rtrim(strtr($base64, '+/', '-_'), '=');
+}
+
+// Detect curl-like requests
 function is_curl_like() {
     $headers = getallheaders();
     $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
@@ -35,7 +41,7 @@ function is_curl_like() {
         return true;
     }
 
-    // Jika spoofing player tapi x-requested-with salah
+    // Spoofed UA with missing headers
     if (
         (strpos($ua, 'exoplayer') !== false && ($headers['x-requested-with'] ?? '') !== 'com.google.android.exoplayer') ||
         (strpos($ua, 'kodi') !== false && ($headers['x-requested-with'] ?? '') !== 'org.xbmc.kodi')
@@ -50,14 +56,14 @@ if (is_curl_like()) {
     respond("error", "iscurllike_detected");
 }
 
-// --- Header filtering ---
+// Header filtering
 $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
 $accept = strtolower($_SERVER['HTTP_ACCEPT'] ?? '');
 $contentType = strtolower($_SERVER['CONTENT_TYPE'] ?? '');
 $xReqWith = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
 $secFetch = isset($_SERVER['HTTP_SEC_FETCH_MODE']) || isset($_SERVER['HTTP_SEC_FETCH_SITE']);
 
-// --- Block common scraping tools ---
+// Block tools
 $block_agents = ['curl', 'wget', 'httpie', 'python', 'http-client', 'scrapy', 'okhttp', 'libhttp'];
 foreach ($block_agents as $agent) {
     if (strpos($ua, $agent) !== false) {
@@ -65,22 +71,22 @@ foreach ($block_agents as $agent) {
     }
 }
 
-// --- Block suspicious content types ---
+// Block octet-stream
 if ($contentType === "application/octet-stream") {
     respond("error", "invalid_content_type");
 }
 
-// --- Block browser-like headers trying to spoof ---
+// Block browser spoof
 if ($secFetch || strpos($accept, 'text/html') !== false) {
     respond("error", "browser_like_request");
 }
 
-// --- Require proper x-requested-with for DRM ---
+// Require proper x-requested-with
 if (strpos($ua, "exoplayer") !== false && $xReqWith !== "com.google.android.exoplayer") {
     respond("error", "spoofed_exoplayer");
 }
 
-// --- Allow only if UA matches known DRM player ---
+// Allow only DRM player
 $allowed = false;
 if (
     (strpos($ua, "exoplayer") !== false && $xReqWith === "com.google.android.exoplayer") ||
@@ -95,7 +101,7 @@ if (!$allowed) {
     respond("error", "unauthorized_player");
 }
 
-// --- Extract key ID from GET or POST ---
+// Extract key ID
 $id = $_GET['id'] ?? $_POST['id'] ?? '';
 if (!preg_match('/^[a-zA-Z0-9]+$/', $id)) {
     respond("error", "invalid_id_format");
@@ -105,7 +111,15 @@ if (!isset($drm_keys[$id])) {
     respond("error", "key_not_found");
 }
 
-// --- Return key if all checks pass ---
+// Return Base64URL-safe key
 $keyData = $drm_keys[$id];
-respond("ok", "key_granted", $keyData);
+list($key_hex, $keyid_hex) = explode(':', $keyData['key']);
+$key_b64 = hexToBase64UrlSafe($key_hex);
+$keyid_b64 = hexToBase64UrlSafe($keyid_hex);
+
+respond("ok", "key_granted", [
+    "name" => $keyData['name'],
+    "key" => $key_b64,
+    "kid" => $keyid_b64
+]);
 ?>
