@@ -1,148 +1,80 @@
 <?php
-// Fungsi untuk merespons JSON dengan HTTP 200
-function respond($data) {
-    http_response_code(200);
-    header('Content-Type: application/json');
-    header('Cache-Control: no-store');
-    exit(json_encode([
-        ...$data,
-        '_trace' => substr(md5(mt_rand()), 0, 8),
-        '_ts' => time() * 1000
-    ]));
-}
-
-// Blokir akses jika tidak menggunakan HTTPS
-$is_https = (
-    (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
-    $_SERVER['SERVER_PORT'] == 443 ||
-    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-);
-if (!$is_https) {
-    respond(["error" => "HTTPS required"]);
-}
-
-// Validasi secret dari Cloudflare Worker
-if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET'] !== 'abc123') {
-    respond(["error" => "Unexpected response"]);
-}
-
-// Gunakan Content-Type octet-stream agar tidak dibaca oleh browser
-header('Content-Type: application/octet-stream');
-header('Cache-Control: no-store');
-
-// Ambil header penting
-$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-$accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-$sec_fetch = $_SERVER['HTTP_SEC_FETCH_MODE'] ?? '';
-$sec_ch_ua = $_SERVER['HTTP_SEC_CH_UA'] ?? '';
-$connection = $_SERVER['HTTP_CONNECTION'] ?? '';
-$encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
-
-// ===================
-// === ANTI-BOT ====
-// ===================
-
-// Blokir User-Agent mencurigakan (bot, curl, python, wget, dll)
-$bad_ua_keywords = [
-    // Tools CLI umum
-    'curl', 'wget', 'httpie', 'fetch', 'lwp-request', 'http_request2',
-
-    // Bot dan crawler klasik
-    'bot', 'spider', 'crawl', 'crawler', 'slurp', 'yandex', 'baiduspider', 'bingbot', 'ahrefs', 'semrush', 'mj12bot',
-
-    // Tools scraping modern
-    'python', 'java', 'perl', 'go-http-client', 'okhttp', 'axios', 'reqwest', 'scrapy', 'requests', 'aiohttp', 'urllib', 'mechanize',
-
-    // Node.js & headless
-    'node-fetch', 'got', 'puppeteer', 'playwright', 'headless', 'phantomjs', 'nightmare',
-
-    // HTTP libraries & user-agent default
-    'libwww', 'httpclient', 'http-client', 'python-requests', 'jakarta', 'unirest', 'axios/',
-
-    // Tools eksplorasi API
-    'postman', 'insomnia', 'rest-client', 'paw/', 'advanced rest client', 'hoppscotch',
-
-    // Emulator / device spoofing
-    'cfnetwork', 'okhttp', 'dalvik', 'java/', 'react-native', 'expo', 'electron',
-
-    // PowerShell & Azure
-    'powershell', 'microsoft azure', 'azure-cli',
-
-    // Fake browser / invalid
-    'unknown', 'undefined', 'mozilla/5.0 (compatible;)', 'java/', 'python-urllib'
+// JSON DRM key store (seharusnya disimpan secara aman, misal database)
+$drm_keys = [
+    "9aB4xZ" => ["name" => "VAR1", "key" => "ec7ee27d83764e4b845c48cca31c8eef:9c0e4191203fccb0fde34ee29999129e"],
+    "T5eR1d" => ["name" => "VAR2", "key" => "7eea72d6075245a99ee3255603d58853:6848ef60575579bf4d415db1032153ed"]
 ];
 
-foreach ($bad_ua_keywords as $bad) {
-    if (stripos($ua, $bad) !== false) {
-        respond(["error" => "Access denied"]);
+// Always respond as application/json
+header("Content-Type: application/json");
+
+// Return function
+function respond($status, $message = null, $key = null) {
+    echo json_encode([
+        "status" => $status,
+        "message" => $message,
+        "key" => $key
+    ]);
+    exit;
+}
+
+// --- Header filtering ---
+$ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
+$accept = strtolower($_SERVER['HTTP_ACCEPT'] ?? '');
+$contentType = strtolower($_SERVER['CONTENT_TYPE'] ?? '');
+$xReqWith = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
+$secFetch = isset($_SERVER['HTTP_SEC_FETCH_MODE']) || isset($_SERVER['HTTP_SEC_FETCH_SITE']);
+
+// --- Block common scraping tools ---
+$block_agents = ['curl', 'wget', 'httpie', 'python', 'http-client', 'scrapy', 'okhttp', 'libhttp'];
+foreach ($block_agents as $agent) {
+    if (strpos($ua, $agent) !== false) {
+        respond("error", "ua_blocked");
     }
 }
 
-// Blokir jika Accept mengandung text/html (indikasi browser)
-if (stripos($accept, 'text/html') !== false) {
-    respond(["error" => "Access denied"]);
+// --- Block suspicious content types ---
+if ($contentType === "application/octet-stream") {
+    respond("error", "invalid_content_type");
 }
 
-// Blokir jika sec-fetch-* atau sec-ch-ua muncul (indikasi browser modern)
-if (!empty($sec_fetch) || !empty($sec_ch_ua)) {
-    respond(["error" => "Access denied"]);
+// --- Block browser-like headers trying to spoof ---
+if ($secFetch || strpos($accept, 'text/html') !== false) {
+    respond("error", "browser_like_request");
 }
 
-// Blokir koneksi aneh atau terlalu umum (indikasi tools HTTP)
-if (stripos($connection, 'keep-alive') !== false && empty($ua)) {
-    respond(["error" => "Access denied"]);
+// --- Require proper x-requested-with for DRM ---
+if (strpos($ua, "exoplayer") !== false && $xReqWith !== "com.google.android.exoplayer") {
+    respond("error", "spoofed_exoplayer");
 }
 
-// Blokir jika Accept-Encoding tidak berisi gzip (banyak bot lupa set ini)
-if (stripos($encoding, 'gzip') === false) {
-    respond(["error" => "Access denied"]);
+// --- Allow only if UA matches known DRM player ---
+$allowed = false;
+if (
+    (strpos($ua, "exoplayer") !== false && $xReqWith === "com.google.android.exoplayer") ||
+    (strpos($ua, "shaka") !== false) ||
+    (strpos($ua, "kodi") !== false) ||
+    (strpos($ua, "vlc") !== false)
+) {
+    $allowed = true;
 }
 
-// ==============================
-// === VALIDASI PARAMETER KEY ==
-// ==============================
-
-// Fungsi untuk encode Base64 URL-Safe
-function hexToBase64UrlSafe($hex) {
-    $base64 = base64_encode(hex2bin($hex));
-    return rtrim(strtr($base64, '+/', '-_'), '=');
+if (!$allowed) {
+    respond("error", "unauthorized_player");
 }
 
-// Ambil dan validasi parameter `k`
-$k = $_GET['k'] ?? '';
-if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
-    respond(["error" => "Unexpected response"]);
+// --- Extract key ID from GET or POST ---
+$id = $_GET['id'] ?? $_POST['id'] ?? '';
+if (!preg_match('/^[a-zA-Z0-9]+$/', $id)) {
+    respond("error", "invalid_id_format");
 }
 
-// Path ke file key list
-$keyFile = '/var/www/keys/keylist.json'; // ← Ubah sesuai struktur server Anda
-if (!file_exists($keyFile)) {
-    respond(["error" => "Unexpected response"]);
+if (!isset($drm_keys[$id])) {
+    respond("error", "key_not_found");
 }
 
-// Baca dan parsing key list
-$keys = json_decode(file_get_contents($keyFile), true);
-if (!is_array($keys) || !isset($keys[$k]['key'])) {
-    respond(["error" => "Unexpected response"]);
-}
+// --- Return key if all checks pass ---
+$keyData = $drm_keys[$id];
+respond("ok", "key_granted", $keyData);
 
-// Format key: "keyid:clearkey"
-$raw = explode(':', $keys[$k]['key']);
-if (count($raw) !== 2) {
-    respond(["error" => "Unexpected response"]);
-}
-
-$key_id_hex = $raw[0];
-$key_hex    = $raw[1];
-
-// Output ClearKey JSON (license)
-echo json_encode([
-    "keys" => [[
-        "kty" => "oct",
-        "kid" => hexToBase64UrlSafe($key_id_hex),
-        "k"   => hexToBase64UrlSafe($key_hex)
-    ]],
-    "type" => "temporary"
-]);
-exit;
 ?>
