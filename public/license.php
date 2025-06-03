@@ -1,30 +1,17 @@
 <?php
-// DRM key store (idealnya dari database, dienkripsi)
-$drm_keys = [
-    "9aB4xZ" => ["name" => "VAR1", "key" => "ec7ee27d83764e4b845c48cca31c8eef:9c0e4191203fccb0fde34ee29999129e"],
-    "T5eR1d" => ["name" => "VAR2", "key" => "7eea72d6075245a99ee3255603d58853:6848ef60575579bf4d415db1032153ed"]
-];
-
-// Always respond JSON
 header("Content-Type: application/json");
 
-// Response function
-function respond($status, $message = null, $key = null) {
-    echo json_encode([
-        "status" => $status,
-        "message" => $message,
-        "key" => $key
-    ]);
+function respond($response) {
+    echo json_encode($response);
     exit;
 }
 
-// Convert HEX to Base64URL-safe
 function hexToBase64UrlSafe($hex) {
     $base64 = base64_encode(hex2bin($hex));
     return rtrim(strtr($base64, '+/', '-_'), '=');
 }
 
-// Detect curl-like requests
+// --- Deteksi isCurlLike ---
 function is_curl_like() {
     $headers = getallheaders();
     $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
@@ -41,7 +28,6 @@ function is_curl_like() {
         return true;
     }
 
-    // Spoofed UA with missing headers
     if (
         (strpos($ua, 'exoplayer') !== false && ($headers['x-requested-with'] ?? '') !== 'com.google.android.exoplayer') ||
         (strpos($ua, 'kodi') !== false && ($headers['x-requested-with'] ?? '') !== 'org.xbmc.kodi')
@@ -53,40 +39,34 @@ function is_curl_like() {
 }
 
 if (is_curl_like()) {
-    respond("error", "iscurllike_detected");
+    respond(["status" => "error", "message" => "iscurllike_detected"]);
 }
 
-// Header filtering
+// --- Validasi Header dan UA ---
 $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
 $accept = strtolower($_SERVER['HTTP_ACCEPT'] ?? '');
 $contentType = strtolower($_SERVER['CONTENT_TYPE'] ?? '');
 $xReqWith = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
 $secFetch = isset($_SERVER['HTTP_SEC_FETCH_MODE']) || isset($_SERVER['HTTP_SEC_FETCH_SITE']);
 
-// Block tools
-$block_agents = ['curl', 'wget', 'httpie', 'python', 'http-client', 'scrapy', 'okhttp', 'libhttp'];
-foreach ($block_agents as $agent) {
-    if (strpos($ua, $agent) !== false) {
-        respond("error", "ua_blocked");
-    }
+if (
+    strpos($ua, 'curl') !== false || strpos($ua, 'wget') !== false || strpos($ua, 'python') !== false
+) {
+    respond(["status" => "error", "message" => "ua_blocked"]);
 }
 
-// Block octet-stream
 if ($contentType === "application/octet-stream") {
-    respond("error", "invalid_content_type");
+    respond(["status" => "error", "message" => "invalid_content_type"]);
 }
 
-// Block browser spoof
 if ($secFetch || strpos($accept, 'text/html') !== false) {
-    respond("error", "browser_like_request");
+    respond(["status" => "error", "message" => "browser_like_request"]);
 }
 
-// Require proper x-requested-with
 if (strpos($ua, "exoplayer") !== false && $xReqWith !== "com.google.android.exoplayer") {
-    respond("error", "spoofed_exoplayer");
+    respond(["status" => "error", "message" => "spoofed_exoplayer"]);
 }
 
-// Allow only DRM player
 $allowed = false;
 if (
     (strpos($ua, "exoplayer") !== false && $xReqWith === "com.google.android.exoplayer") ||
@@ -96,30 +76,44 @@ if (
 ) {
     $allowed = true;
 }
-
 if (!$allowed) {
-    respond("error", "unauthorized_player");
+    respond(["status" => "error", "message" => "unauthorized_player"]);
 }
 
-// Extract key ID
+// --- Load key list dari file ---
+$keyFile = '/var/www/keys/keylist.json';
+if (!file_exists($keyFile)) {
+    respond(["status" => "error", "message" => "unexpected_response"]);
+}
+
+$keyJson = file_get_contents($keyFile);
+$keyList = json_decode($keyJson, true);
+if (!is_array($keyList)) {
+    respond(["status" => "error", "message" => "key_file_invalid"]);
+}
+
+// --- Ambil ID dari parameter ---
 $id = $_GET['id'] ?? $_POST['id'] ?? '';
 if (!preg_match('/^[a-zA-Z0-9]+$/', $id)) {
-    respond("error", "invalid_id_format");
+    respond(["status" => "error", "message" => "invalid_id_format"]);
 }
 
-if (!isset($drm_keys[$id])) {
-    respond("error", "key_not_found");
+if (!isset($keyList[$id])) {
+    respond(["status" => "error", "message" => "key_not_found"]);
 }
 
-// Return Base64URL-safe key
-$keyData = $drm_keys[$id];
+// --- Format respon DRM key ---
+$keyData = $keyList[$id];
 list($key_hex, $keyid_hex) = explode(':', $keyData['key']);
 $key_b64 = hexToBase64UrlSafe($key_hex);
 $keyid_b64 = hexToBase64UrlSafe($keyid_hex);
 
-respond("ok", "key_granted", [
-    "name" => $keyData['name'],
-    "key" => $key_b64,
-    "kid" => $keyid_b64
+respond([
+    "status" => "ok",
+    "message" => "key_granted",
+    "key" => [
+        "name" => $keyData['name'],
+        "key" => $key_b64,
+        "kid" => $keyid_b64
+    ]
 ]);
-?>
