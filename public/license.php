@@ -78,6 +78,13 @@ foreach ($bad_ua_keywords as $bad) {
     }
 }
 
+// Deteksi browser palsu: mengaku Chrome/Safari tapi header tidak cocok
+if (preg_match('/(chrome|safari|mozilla|firefox)/i', $ua)) {
+    if (empty($sec_fetch) || empty($sec_ch_ua) || stripos($accept, 'application/json') === false) {
+        respond(["error" => "Fake browser spoofing detected"]);
+    }
+}
+
 // Blokir jika Accept mengandung text/html (indikasi browser)
 if (stripos($accept, 'text/html') !== false) {
     respond(["error" => "Access denied"]);
