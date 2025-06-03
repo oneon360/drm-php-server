@@ -78,12 +78,18 @@ foreach ($bad_ua_keywords as $bad) {
     }
 }
 
-// Deteksi browser palsu: mengaku Chrome/Safari tapi header tidak cocok
+// Deteksi browser palsu hanya jika User-Agent mengandung browser populer,
+// tapi tidak menyertakan tanda-tanda permintaan JSON atau DRM (misalnya tidak ada Accept: application/json)
 if (preg_match('/(chrome|safari|mozilla|firefox)/i', $ua)) {
-    if (empty($sec_fetch) || empty($sec_ch_ua) || stripos($accept, 'application/json') === false) {
-        respond(["error" => "Fake browser spoofing detected"]);
+    $is_browser = !empty($sec_fetch) || !empty($sec_ch_ua);
+    $is_drm_request = stripos($accept, 'application/json') !== false || stripos($accept, 'application/octet-stream') !== false;
+
+    // Jika mengaku browser tapi tidak menunjukkan tanda akses DRM atau JSON
+    if (!$is_browser && !$is_drm_request) {
+        respond(["error" => "Browser spoofing or invalid DRM request"]);
     }
 }
+
 
 // Blokir jika Accept mengandung text/html (indikasi browser)
 if (stripos($accept, 'text/html') !== false) {
