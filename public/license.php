@@ -8,7 +8,7 @@ $drm_keys = [
 // Always respond as application/json
 header("Content-Type: application/json");
 
-// Return function
+// Return response function
 function respond($status, $message = null, $key = null) {
     echo json_encode([
         "status" => $status,
@@ -16,6 +16,38 @@ function respond($status, $message = null, $key = null) {
         "key" => $key
     ]);
     exit;
+}
+
+// --- Deteksi alat seperti curl atau isCurlLike ---
+function is_curl_like() {
+    $headers = getallheaders();
+    $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
+    $accept = strtolower($_SERVER['HTTP_ACCEPT'] ?? '');
+    $encoding = strtolower($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '');
+    $connection = strtolower($_SERVER['HTTP_CONNECTION'] ?? '');
+
+    if (
+        empty($accept) || strpos($accept, '*/*') !== false ||
+        empty($encoding) ||
+        $connection === 'close' ||
+        preg_match('/curl|httpie|python|wget|libhttp|powershell|http-client/i', $ua)
+    ) {
+        return true;
+    }
+
+    // Jika spoofing player tapi x-requested-with salah
+    if (
+        (strpos($ua, 'exoplayer') !== false && ($headers['x-requested-with'] ?? '') !== 'com.google.android.exoplayer') ||
+        (strpos($ua, 'kodi') !== false && ($headers['x-requested-with'] ?? '') !== 'org.xbmc.kodi')
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+if (is_curl_like()) {
+    respond("error", "iscurllike_detected");
 }
 
 // --- Header filtering ---
@@ -76,5 +108,4 @@ if (!isset($drm_keys[$id])) {
 // --- Return key if all checks pass ---
 $keyData = $drm_keys[$id];
 respond("ok", "key_granted", $keyData);
-
 ?>
