@@ -21,6 +21,11 @@ if (!$is_https) {
     respond(["error" => "HTTPS required"]);
 }
 
+// Validasi secret dari Cloudflare Worker
+if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET'] !== 'abc123') {
+    respond(["error" => "Unexpected response"]);
+}
+
 // Gunakan Content-Type octet-stream agar tidak dibaca oleh browser
 header('Content-Type: application/octet-stream');
 header('Cache-Control: no-store');
