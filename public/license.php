@@ -1,5 +1,4 @@
 <?php
-// Fungsi untuk merespons JSON dengan HTTP 200
 function respond($data) {
     http_response_code(200);
     header('Content-Type: application/json');
@@ -11,7 +10,6 @@ function respond($data) {
     ]));
 }
 
-// Fungsi modular untuk deteksi browser palsu (spoofing UA browser tapi bukan permintaan DRM/browser asli)
 function is_fake_browser(string $ua, string $accept, string $sec_fetch, string $sec_ch_ua): bool {
     $ua = strtolower($ua);
     $accept = strtolower($accept);
@@ -33,7 +31,6 @@ function is_fake_browser(string $ua, string $accept, string $sec_fetch, string $
     return false;
 }
 
-// Blokir akses jika tidak menggunakan HTTPS
 $is_https = (
     (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
     $_SERVER['SERVER_PORT'] == 443 ||
@@ -43,16 +40,14 @@ if (!$is_https) {
     respond(["error" => "HTTPS required"]);
 }
 
-// Validasi secret dari Cloudflare Worker
 if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET'] !== 'abc123') {
     respond(["error" => "Unexpected response"]);
 }
 
-// Gunakan Content-Type octet-stream agar tidak dibaca oleh browser
 header('Content-Type: application/octet-stream');
 header('Cache-Control: no-store');
 
-// Ambil header penting
+
 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
 $sec_fetch = $_SERVER['HTTP_SEC_FETCH_MODE'] ?? '';
@@ -60,11 +55,6 @@ $sec_ch_ua = $_SERVER['HTTP_SEC_CH_UA'] ?? '';
 $connection = $_SERVER['HTTP_CONNECTION'] ?? '';
 $encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
 
-// ===================
-// === ANTI-BOT ======
-// ===================
-
-// Blokir User-Agent mencurigakan (bot, curl, python, wget, dll)
 $bad_ua_keywords = [
     'curl', 'wget', 'httpie', 'fetch', 'lwp-request', 'http_request2',
     'bot', 'spider', 'crawl', 'crawler', 'slurp', 'yandex', 'baiduspider', 'bingbot', 'ahrefs', 'semrush', 'mj12bot',
@@ -83,34 +73,26 @@ foreach ($bad_ua_keywords as $bad) {
     }
 }
 
-// Deteksi browser palsu (mengaku browser tapi header tidak cocok, bukan permintaan JSON/DRM)
 if (is_fake_browser($ua, $accept, $sec_fetch, $sec_ch_ua)) {
     respond(["error" => "Browser spoofing or invalid DRM request"]);
 }
 
-// Blokir jika Accept mengandung text/html (indikasi browser)
 if (stripos($accept, 'text/html') !== false) {
     respond(["error" => "Access denied"]);
 }
 
-// Blokir jika sec-fetch-* atau sec-ch-ua muncul (indikasi browser modern)
 if (!empty($sec_fetch) || !empty($sec_ch_ua)) {
     respond(["error" => "Access denied"]);
 }
 
-// Blokir koneksi aneh atau terlalu umum (indikasi tools HTTP)
 if (stripos($connection, 'keep-alive') !== false && empty($ua)) {
     respond(["error" => "Access denied"]);
 }
 
-// Blokir jika Accept-Encoding tidak berisi gzip (banyak bot lupa set ini)
+
 if (stripos($encoding, 'gzip') === false) {
     respond(["error" => "Access denied"]);
 }
-
-// ==============================
-// === VALIDASI PARAMETER KEY ===
-// ==============================
 
 function hexToBase64UrlSafe($hex) {
     $base64 = base64_encode(hex2bin($hex));
@@ -122,10 +104,8 @@ if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
     respond(["error" => "Unexpected response"]);
 }
 
-// Ubah di sini: pakai URL eksternal untuk keylist.json
-$keyFileUrl = 'https://bitbucket.org/idplay3r/drm/raw/5614666cbae3d283ad2fd5c4a951200c1c06294e/keylist.json';
+$keyFileUrl = 'https://raw.githubusercontent.com/oneon360/php-server/refs/heads/main/keys/keylist.json';
 
-// Ambil data keylist dari URL eksternal
 $options = [
     "http" => [
         "timeout" => 3,
