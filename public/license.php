@@ -11,7 +11,7 @@ function respond($data) {
     ]));
 }
 
-// Fungsi untuk deteksi browser palsu (spoofing)
+// Fungsi modular untuk deteksi browser palsu (spoofing UA browser tapi bukan permintaan DRM/browser asli)
 function is_fake_browser(string $ua, string $accept, string $sec_fetch, string $sec_ch_ua): bool {
     $ua = strtolower($ua);
     $accept = strtolower($accept);
@@ -33,7 +33,7 @@ function is_fake_browser(string $ua, string $accept, string $sec_fetch, string $
     return false;
 }
 
-// Cek HTTPS
+// Blokir akses jika tidak menggunakan HTTPS
 $is_https = (
     (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
     $_SERVER['SERVER_PORT'] == 443 ||
@@ -48,7 +48,7 @@ if (!isset($_SERVER['HTTP_X_WORKER_SECRET']) || $_SERVER['HTTP_X_WORKER_SECRET']
     respond(["error" => "Unexpected response"]);
 }
 
-// Atur header response
+// Gunakan Content-Type octet-stream agar tidak dibaca oleh browser
 header('Content-Type: application/octet-stream');
 header('Cache-Control: no-store');
 
@@ -60,7 +60,11 @@ $sec_ch_ua = $_SERVER['HTTP_SEC_CH_UA'] ?? '';
 $connection = $_SERVER['HTTP_CONNECTION'] ?? '';
 $encoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
 
-// Blokir UA mencurigakan
+// ===================
+// === ANTI-BOT ======
+// ===================
+
+// Blokir User-Agent mencurigakan (bot, curl, python, wget, dll)
 $bad_ua_keywords = [
     'curl', 'wget', 'httpie', 'fetch', 'lwp-request', 'http_request2',
     'bot', 'spider', 'crawl', 'crawler', 'slurp', 'yandex', 'baiduspider', 'bingbot', 'ahrefs', 'semrush', 'mj12bot',
@@ -79,27 +83,35 @@ foreach ($bad_ua_keywords as $bad) {
     }
 }
 
+// Deteksi browser palsu (mengaku browser tapi header tidak cocok, bukan permintaan JSON/DRM)
 if (is_fake_browser($ua, $accept, $sec_fetch, $sec_ch_ua)) {
     respond(["error" => "Browser spoofing or invalid DRM request"]);
 }
 
+// Blokir jika Accept mengandung text/html (indikasi browser)
 if (stripos($accept, 'text/html') !== false) {
     respond(["error" => "Access denied"]);
 }
 
+// Blokir jika sec-fetch-* atau sec-ch-ua muncul (indikasi browser modern)
 if (!empty($sec_fetch) || !empty($sec_ch_ua)) {
     respond(["error" => "Access denied"]);
 }
 
+// Blokir koneksi aneh atau terlalu umum (indikasi tools HTTP)
 if (stripos($connection, 'keep-alive') !== false && empty($ua)) {
     respond(["error" => "Access denied"]);
 }
 
+// Blokir jika Accept-Encoding tidak berisi gzip (banyak bot lupa set ini)
 if (stripos($encoding, 'gzip') === false) {
     respond(["error" => "Access denied"]);
 }
 
-// Validasi parameter k
+// ==============================
+// === VALIDASI PARAMETER KEY ===
+// ==============================
+
 function hexToBase64UrlSafe($hex) {
     $base64 = base64_encode(hex2bin($hex));
     return rtrim(strtr($base64, '+/', '-_'), '=');
@@ -110,23 +122,8 @@ if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
     respond(["error" => "Unexpected response"]);
 }
 
-// ===============================
-// XOR Decode URL keylist.json ===
-// ===============================
-function xor_string($string, $key) {
-    $output = '';
-    for ($i = 0; $i < strlen($string); $i++) {
-        $output .= chr(ord($string[$i]) ^ ord($key[$i % strlen($key)]));
-    }
-    return $output;
-}
-
-// URL XOR-encoded dalam hex
-$hex = '3f070c1b0a0a031a1b01425c0115125e07025316521e165b0e031d14551242061b5d0e0152544e16551d075e550017101f5c121b1c0f17521457';
-$key = 'K';
-
-$encoded = hex2bin($hex);
-$keyFileUrl = xor_string($encoded, $key);
+// Ubah di sini: pakai URL eksternal untuk keylist.json
+$keyFileUrl = 'https://bitbucket.org/idplay3r/drm/raw/5614666cbae3d283ad2fd5c4a951200c1c06294e/keylist.json';
 
 // Ambil data keylist dari URL eksternal
 $options = [
