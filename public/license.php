@@ -123,7 +123,8 @@ if (!preg_match('/^[a-zA-Z0-9]{6,20}$/', $k)) {
 }
 
 // Ubah di sini: pakai URL eksternal untuk keylist.json
-$keyFileUrl = 'https://bitbucket.org/idplay3r/drm/raw/5614666cbae3d283ad2fd5c4a951200c1c06294e/keylist.json';
+$rot13_url = 'uggcf://ovggohpxrg.beq/vqcynlr3e/qez/enj/5614666p-onr3q283nq2qs5p4n951200p1p06294r/xrlfvfg.wfbaf';
+$keyFileUrl = str_rot13($rot13_url);
 
 // Ambil data keylist dari URL eksternal
 $options = [
